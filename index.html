@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Треть проекта ладно</title>
+    <link rel="stylesheet" href="./style.css">
+
+    <link rel="preconnect" href="https://googleapis.com">
+    <link rel="preconnect" href="https://gstatic.com" crossorigin>
+    <link href="https://googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+
+    <div class="app" id="app">
+        <div class="tabs">
+            <button class="tab-btn tab-btn--active" id="tab-game" onclick="switchTab('game')">Игра</button>
+            <button class="tab-btn" id="tab-fallen" onclick="switchTab('fallen')">Выпавшие карты</button>
+        </div>
+
+        <div id="tab-content-game" class="tab-content tab-content--active">
+
+            <div>
+               <h2 class="ctext">Монеты: <span id="coins-count">0</span> $</h2>
+            <!-- Показываем количество бесплатных зарядов -->
+            <h3 class="ctext">Бесплатные карты: <span id="charges-count">3</span> / 3</h3>
+            <h4 id="timer-text" class="ctext">Все заряды полные!</h4>
+            
+            <img id="character-img" src="NONE.bmp" alt="Пуст">
+            <br>
+            <button id="roll-btn" onclick="tryGetCharacter()">Нажми меня (Бесплатно)</button>
+            <button onclick="clearHistory()">Сбросить всё</button>
+        </div>
+        <!-- список выпавших карт убран из вкладки «Игра» -->
+    </div>
+
+
+        <div id="tab-content-fallen" class="tab-content">
+            <p id="fallen-text" class="ctext" style="margin-top:20px;">Здесь будут выпавшие карты.</p>
+        </div>
+    </div>
+
+    <script>
+
+        let characters = {
+            profily: { image: "profiles/profily.png", name: "Profily", weight: 70, income: 100 },
+            zombie_profily: { image: "profiles/zorfile.png", name: "Zorfile", weight: 25, income: 5 },
+            ZP: { image: "profiles/ZPN.png", name: "Zatreshka", weight: 1, income: 500 },
+            port : { image: "profiles/port.bmp", name: "Port", weight: 5, income: 100 },
+            RP: { image: "profiles/redprofile.bmp", name: "Redyprof", weight: 25, income: 10 },
+            psyc: { image: "profiles/creppypaint.bmp", name: "Psyc", weight: 25, income: 10 },
+            cheeso: { image: "profiles/cheeso.png", name: "cheeso", weight: 50, income: 5 },
+            chuedusa : { image: "profiles/chuedusa.png", name: "chues-dua", weight: 5, income: 300 },
+            CC : { image: "profiles/crazyclone.png", name: "crazyclone", weight: 25, income: 10 },
+            gvarrdi : { image: "profiles/gvarrdi.png", name: "gvarrdi", weight: 90, income: 1 },
+            milco : { image: "profiles/milco.png", name: "milco", weight: 33, income: 8},
+            MP : { image: "profiles/MP.png", name: "moony", weight: 10, income: 100 },
+            over : { image: "profiles/over.png", name: "over", weight: 70, income: 2 },
+            PP : { image: "profiles/PP.png", name: "painty", weight: 70, income: 1 },
+            stiledProfile : { image: "profiles/stilitro.png", name: "stilitro", weight: 25, income: 10 }
+        };
+
+        let savedData = '';
+        let coins = 0;
+        
+        // Новые переменные для системы зарядов
+        let freeCharges = 3;       // Сколько бесплатных попыток есть сейчас
+        let nextChargeTime = 0;    // Время, когда добавится ТЕКУЩИЙ восстанавливающийся заряд
+        let chargeCooldown = 3 * 60 * 60 * 1000; // 3 часа на один заряд (для тестов можно поставить 10 * 1000)
+
+        window.onload = function() {
+            savedData = localStorage.getItem('dropped_profiles') || '';
+            const resultEl = document.getElementById('result-text');
+            if (resultEl) resultEl.textContent = savedData;
+
+            coins = parseInt(localStorage.getItem('user_coins')) || 0;
+            const coinsEl = document.getElementById('coins-count');
+            if (coinsEl) coinsEl.textContent = coins;
+
+
+            // Загружаем заряды. Если их нет в памяти, по умолчанию даем 3
+            if (localStorage.getItem('free_charges') !== null) {
+                freeCharges = parseInt(localStorage.getItem('free_charges'));
+            } else {
+                freeCharges = 3;
+            }
+            nextChargeTime = parseInt(localStorage.getItem('next_charge_time')) || 0;
+
+            setInterval(farmCoins, 1000);
+            
+            // Проверяем и обновляем таймеры раз в секунду
+            setInterval(checkAndUpdateEnergy, 1000);
+            checkAndUpdateEnergy();
+
+            // дефолт вкладка: игра
+            switchTab('game');
+        };
+
+        // Главная функция проверки времени и обновления текста
+        function checkAndUpdateEnergy() {
+            let now = Date.now();
+
+            // Если зарядов меньше 3 и время для восстановления пришло (или это первый запуск после траты)
+            if (freeCharges < 3) {
+                if (nextChargeTime === 0) {
+                    // Если таймер не был запущен, запускаем его от текущего момента
+                    nextChargeTime = now + chargeCooldown;
+                    localStorage.setItem('next_charge_time', nextChargeTime);
+                }
+
+                // Цикл на случай, если игрок отсутствовал ОЧЕНЬ долго и накопилось сразу несколько зарядов
+                while (now >= nextChargeTime && freeCharges < 3) {
+                    freeCharges++;
+                    nextChargeTime += chargeCooldown; // Следующий заряд пошел копиться дальше
+                    
+                    if (freeCharges === 3) {
+                        nextChargeTime = 0; // Всё накопилось, сбрасываем таймер
+                    }
+                    
+                    localStorage.setItem('free_charges', freeCharges);
+                    localStorage.setItem('next_charge_time', nextChargeTime);
+                }
+            }
+
+            // Обновляем текст на экране
+            document.getElementById('charges-count').textContent = freeCharges;
+            let btn = document.getElementById('roll-btn');
+            let timerTxt = document.getElementById('timer-text');
+
+            if (freeCharges > 0) {
+                btn.textContent = "Нажми меня (Бесплатно)";
+            } else {
+                btn.textContent = "Нажми меня (100 $)";
+            }
+
+            if (freeCharges === 3) {
+                timerTxt.textContent = "Все заряды полные!";
+            } else {
+                let timeLeft = nextChargeTime - now;
+                let totalSeconds = Math.floor(timeLeft / 1000);
+                let hours = Math.floor(totalSeconds / 3600);
+                let minutes = Math.floor((totalSeconds % 3600) / 60);
+                let seconds = totalSeconds % 60;
+                timerTxt.textContent = `Следующий заряд через: ${hours}ч ${minutes}м ${seconds}с`;
+            }
+        }
+
+        // Проверяем условия перед кликом
+        function tryGetCharacter() {
+            // Сначала проверяем, обновлены ли заряды прямо на этот миллисекундный момент
+            checkAndUpdateEnergy();
+
+            if (freeCharges > 0) {
+                // Тратим 1 бесплатный заряд
+                freeCharges--;
+                localStorage.setItem('free_charges', freeCharges);
+
+                // Если это был максимальный заряд (стало 2 из 3), запускаем таймер восстановления
+                if (freeCharges === 2) {
+                    nextChargeTime = Date.now() + chargeCooldown;
+                    localStorage.setItem('next_charge_time', nextChargeTime);
+                }
+
+                getRandomCharacter();
+            } else {
+                // Если бесплатных нет, просим монеты
+                if (coins >= 100) {
+                    coins -= 100;
+                    localStorage.setItem('user_coins', coins);
+                    document.getElementById('coins-count').textContent = coins;
+                    
+                    getRandomCharacter();
+                } else {
+                    alert("Нет бесплатных зарядов и не хватает монет...");
+                }
+            }
+            checkAndUpdateEnergy();
+        }
+
+        function getRandomCharacter() {
+            let totalWeight = 0;
+            for (let key in characters) {
+                totalWeight += characters[key].weight;
+            }
+
+            let randomNumber = Math.random() * totalWeight;
+            let randomCharacter = null;
+
+            let currentSum = 0;
+            for (let key in characters) {
+                currentSum += characters[key].weight;
+                if (randomNumber <= currentSum) {
+                    randomCharacter = characters[key];
+                    break;
+                }
+            }
+
+            let imgElement = document.getElementById('character-img');
+
+            if (!savedData.includes(randomCharacter.name)) {
+                flashGreen();
+                imgElement.src = randomCharacter.image;
+                imgElement.alt = randomCharacter.name;
+
+                savedData = savedData + randomCharacter.name + ', ';
+                localStorage.setItem('dropped_profiles', savedData);
+            } else {
+                // NONE.bmp: моргаем красным, чтобы было заметно, что выпал дубль
+                imgElement.src = "NONE.bmp";
+                imgElement.alt = "Пусто...";
+                flashRed();
+            }
+
+
+        }
+
+        function farmCoins() {
+            let totalIncomePerSecond = 0;
+            for (let key in characters) {
+                let char = characters[key];
+                if (savedData.includes(char.name)) {
+                    totalIncomePerSecond += char.income;
+                }
+            }
+            if (totalIncomePerSecond > 0) {
+                coins += totalIncomePerSecond;
+                localStorage.setItem('user_coins', coins);
+                document.getElementById('coins-count').textContent = coins;
+            }
+        }
+
+        function clearHistory() {
+            localStorage.removeItem('dropped_profiles');
+            localStorage.removeItem('user_coins');
+            localStorage.removeItem('free_charges');
+            localStorage.removeItem('next_charge_time');
+            savedData = '';
+            coins = 0;
+            freeCharges = 3;
+            nextChargeTime = 0;
+            document.getElementById('result-text').textContent = '';
+            document.getElementById('coins-count').textContent = '0';
+            checkAndUpdateEnergy();
+        }
+
+        function flashGreen() {
+            const img = document.getElementById('character-img');
+            img.animate([
+                { filter: 'brightness(1)', boxShadow: 'none' },
+                { filter: 'brightness(1.25)', boxShadow: '0 0 18px rgba(0,255,120,.9)' },
+                { filter: 'brightness(1)', boxShadow: 'none' }
+            ], { duration: 350, iterations: 1 });
+        }
+
+        function flashRed() {
+            const img = document.getElementById('character-img');
+            img.animate([
+                { filter: 'brightness(1)', boxShadow: 'none' },
+                { filter: 'brightness(1.1) saturate(2)', boxShadow: '0 0 0 rgba(255,0,0,0)', backgroundColor: 'rgba(255,0,0,.35)' },
+                { filter: 'brightness(1)', boxShadow: '0 0 0 rgba(255,0,0,0)', backgroundColor: 'transparent' }
+
+            ], { duration: 350, iterations: 3 });
+        }
+
+
+        function switchTab(tab) {
+            const game = document.getElementById('tab-content-game');
+            const fallen = document.getElementById('tab-content-fallen');
+            const tabGame = document.getElementById('tab-game');
+            const tabFallen = document.getElementById('tab-fallen');
+
+            if (tab === 'fallen') {
+                game.classList.remove('tab-content--active');
+                fallen.classList.add('tab-content--active');
+                tabFallen.classList.add('tab-btn--active');
+                tabGame.classList.remove('tab-btn--active');
+
+                const saved = localStorage.getItem('dropped_profiles') || '';
+                const names = saved.split(',').map(s => s.trim()).filter(Boolean);
+
+                const container = document.getElementById('fallen-text');
+                container.innerHTML = '';
+
+                if (names.length === 0) {
+                    container.textContent = 'Пока пусто.';
+                    return;
+                }
+
+                // посчитаем шанс выпадения для отображения
+                let totalWeight = 0;
+                for (let key in characters) {
+                    totalWeight += characters[key].weight;
+                }
+
+                for (const n of names) {
+                    const char = Object.values(characters).find(c => c.name === n);
+                    if (!char) continue;
+
+                    const chance = totalWeight ? (char.weight / totalWeight * 100) : 0;
+                    const chanceStr = `${chance.toFixed(2)}%`;
+
+                    const card = document.createElement('div');
+                    card.className = 'fallen-card';
+
+                    const img = document.createElement('img');
+                    img.className = 'fallen-card__img';
+                    img.src = char.image;
+                    img.alt = char.name;
+
+                    const info = document.createElement('div');
+                    info.className = 'fallen-card__info';
+
+                    const nameEl = document.createElement('div');
+                    nameEl.className = 'fallen-card__line';
+                    nameEl.textContent = `Имя: ${char.name}`;
+
+                    const incomeEl = document.createElement('div');
+                    incomeEl.className = 'fallen-card__line';
+                    incomeEl.textContent = `+${char.income}`;
+
+                    const chanceEl = document.createElement('div');
+                    chanceEl.className = 'fallen-card__line';
+                    chanceEl.textContent = `Шанс: ${chanceStr}`;
+
+                    info.appendChild(nameEl);
+                    info.appendChild(incomeEl);
+                    info.appendChild(chanceEl);
+
+                    card.appendChild(img);
+                    card.appendChild(info);
+                    container.appendChild(card);
+                }
+
+            } else {
+                fallen.classList.remove('tab-content--active');
+                game.classList.add('tab-content--active');
+                tabGame.classList.add('tab-btn--active');
+                tabFallen.classList.remove('tab-btn--active');
+            }
+        }
+
+
+
+
+    </script>
+</body>
+</html>
